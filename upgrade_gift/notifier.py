@@ -6,6 +6,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
+from . import config
 from .db import Database
 from .gifts import GiftEvent
 
@@ -89,15 +90,16 @@ def format_event(event: GiftEvent, s: dict) -> str:
     return "\n".join(lines)
 
 
-def format_username(item: dict) -> str:
-    name = html.escape(item["name"])
-    return (
-        "🔎 <b>Найден свободный юзернейм!</b>\n\n"
-        f"<code>@{name}</code>\n"
-        f"⭐ Оценка: <b>{item['score']}/100</b>\n"
-        f"🏷 Окончание: {html.escape(item['suffix'] or '—')}\n\n"
-        "Займите его, пока не забрали: создайте бота в @BotFather или укажите имя в профиле."
-    )
+DIGEST_LIMIT = 40  # имён в одном сообщении
+
+
+def format_usernames(items: list[dict]) -> str:
+    lines = [f"🔎 <b>Найдены свободные юзернеймы: {len(items)}</b>", ""]
+    for item in items:
+        stars = "🔥" if item["score"] >= 80 else "⭐" if item["score"] >= 65 else "▫️"
+        lines.append(f"{stars} <code>@{html.escape(item['name'])}</code> — {item['score']}/100")
+    lines += ["", "Нажмите на имя, чтобы скопировать. Займите его, пока не забрали."]
+    return "\n".join(lines)
 
 
 class Notifier:
@@ -105,6 +107,7 @@ class Notifier:
         self.bot = bot
         self.db = db
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=50_000)
+        self._found: list[dict] = []
 
     def _put(self, user_id: int, text: str, keyboard, silent: bool, preview_url: str | None) -> bool:
         try:
@@ -126,15 +129,40 @@ class Notifier:
                     return
 
     async def dispatch_username(self, item: dict) -> None:
+        """Находки копятся и уходят сводкой (иначе первый проход завалит чат)."""
         log.info("Свободен юзернейм @%s (оценка %s)", item["name"], item["score"])
+        self._found.append(item)
+
+    async def flush_usernames(self) -> None:
+        found, self._found = self._found, []
+        if not found:
+            return
+        found.sort(key=lambda i: (-i["score"], i["name"]))
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")
         ]])
+        # Админы получают находки всегда, подписчики — если включили в мини-аппе
+        recipients = {uid: config.USERNAME_ADMIN_MIN_SCORE for uid in config.ADMIN_IDS}
+        silent = {uid: False for uid in config.ADMIN_IDS}
         for sub in await self.db.subscribers():
             s = sub["settings"]
-            if s["notify_usernames"] and item["score"] >= (s["username_min_score"] or 0):
-                if not self._put(sub["id"], format_username(item), keyboard, s["silent"], None):
-                    return
+            if s["notify_usernames"]:
+                min_score = s["username_min_score"] or 0
+                recipients[sub["id"]] = min(recipients.get(sub["id"], min_score), min_score)
+                silent[sub["id"]] = s["silent"]
+        for uid, min_score in recipients.items():
+            items = [i for i in found if i["score"] >= min_score]
+            for start in range(0, len(items), DIGEST_LIMIT):
+                self._put(uid, format_usernames(items[start:start + DIGEST_LIMIT]),
+                          keyboard, silent[uid], None)
+
+    async def run_username_digest(self) -> None:
+        while True:
+            await asyncio.sleep(config.USERNAME_DIGEST_MINUTES * 60)
+            try:
+                await self.flush_usernames()
+            except Exception:
+                log.exception("Сводка юзернеймов")
 
     async def _send(self, user_id: int, text: str, keyboard, silent: bool, preview_url: str | None) -> None:
         preview = (LinkPreviewOptions(url=preview_url, prefer_large_media=True) if preview_url

@@ -109,3 +109,31 @@ async def test_api(db, aiohttp_client):
     await db.save_username("goldai", "ai", score("goldai"), "free")
     r = await client.get("/api/usernames/status?since=0&names=goldai,goldgame", headers=headers)
     assert [i["status"] for i in (await r.json())["items"]] == ["free", "checking"]
+
+
+async def test_digest(db, monkeypatch):
+    from upgrade_gift import config
+    from upgrade_gift.notifier import Notifier
+
+    monkeypatch.setattr(config, "ADMIN_IDS", {1})
+    monkeypatch.setattr(config, "USERNAME_ADMIN_MIN_SCORE", 60)
+    await db.upsert_user(2, "sub", "Sub")
+    await db.extend_subscription(2, 1)
+    user = await db.get_user(2)
+    await db.save_settings(2, {**user["settings"], "notify_usernames": True, "username_min_score": 85})
+    await db.upsert_user(3, "nosub", "NoSub")
+
+    notifier = Notifier(None, db)
+    for name, sc in (("payai", 89), ("xgame", 85), ("travelagent", 40)):
+        await notifier.dispatch_username({"name": name, "score": sc, "suffix": ""})
+    await notifier.flush_usernames()
+
+    sent = {}
+    while not notifier.queue.empty():
+        uid, text, *_ = notifier.queue.get_nowait()
+        sent[uid] = text
+    assert set(sent) == {1, 2}
+    assert "@payai" in sent[1] and "@xgame" in sent[1] and "travelagent" not in sent[1]
+    assert "@payai" in sent[2] and "@xgame" in sent[2]
+    await notifier.flush_usernames()
+    assert notifier.queue.empty()  # повторно не шлём

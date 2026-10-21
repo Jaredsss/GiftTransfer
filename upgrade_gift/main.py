@@ -61,6 +61,9 @@ async def main() -> None:
         if config.USERNAME_HUNTER:
             hunter = UsernameHunter(client, db, notifier.dispatch_username)
             tasks.append(asyncio.create_task(hunter.run()))
+            tasks.append(asyncio.create_task(notifier.run_username_digest()))
+            if not config.ADMIN_IDS:
+                log.warning("ADMIN_IDS не задан — находки юзернеймов некому присылать")
     else:
         log.warning("TG_API_ID / TG_API_HASH / TG_SESSION не заданы — мониторинг подарков отключён")
 

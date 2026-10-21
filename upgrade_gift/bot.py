@@ -13,6 +13,8 @@ from aiogram.types import (
 
 from . import config
 from .db import Database
+from .notifier import format_usernames
+from .usernames import SUFFIXES
 
 
 def _app_keyboard(text: str = "⚙️ Открыть Upgrade Gift") -> InlineKeyboardMarkup:
@@ -86,6 +88,28 @@ def create_router(db: Database) -> Router:
             f"💳 Оплат: {s['paid']} на {s['revenue']:g} {config.XROCKET_CURRENCY}"
         )
 
+    @router.message(Command("names"))
+    async def names(message: Message, command: CommandObject):
+        user = await db.get_user(message.from_user.id)
+        allowed = message.from_user.id in config.ADMIN_IDS or (user and user["sub_until"] > time.time())
+        if not allowed:
+            await message.answer("Поиск юзернеймов доступен с подпиской.", reply_markup=_app_keyboard())
+            return
+        suffix = (command.args or "").strip().lower() or None
+        if suffix and suffix not in SUFFIXES:
+            await message.answer("Окончания: " + ", ".join(SUFFIXES) + "\nНапример: /names ai")
+            return
+        items = await db.usernames_top(("free",), suffix, 30)
+        if not items:
+            await message.answer("Пока ничего не найдено — поиск идёт в фоне, загляните позже.")
+            return
+        stats = await db.usernames_stats()
+        await message.answer(
+            format_usernames(items)
+            + f"\n\nПроверено: {sum(stats.values())} · свободных: {stats.get('free', 0)}"
+            + "\nФильтр по окончанию: /names ai (game, app, agent, bot)"
+        )
+
     @router.message()
     async def fallback(message: Message):
         await message.answer("Настройки и подписка — в мини-аппе 👇", reply_markup=_app_keyboard())
@@ -98,6 +122,7 @@ async def setup_bot(bot: Bot, dp: Dispatcher, db: Database) -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="status", description="Статус подписки"),
+        BotCommand(command="names", description="Лучшие свободные юзернеймы"),
         BotCommand(command="help", description="Помощь"),
     ])
     await bot.set_chat_menu_button(
