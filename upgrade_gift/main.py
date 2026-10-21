@@ -60,7 +60,7 @@ async def main() -> None:
     else:
         log.warning("TG_API_ID / TG_API_HASH / TG_SESSION не заданы — мониторинг подарков отключён")
 
-    runner = web.AppRunner(create_app(db, billing, monitor.attributes if monitor else None))
+    runner = web.AppRunner(create_app(db, billing, monitor))
     await runner.setup()
     await web.TCPSite(runner, config.WEB_HOST, config.WEB_PORT).start()
     log.info("Мини-апп: http://%s:%s -> %s", config.WEB_HOST, config.WEB_PORT, config.WEBAPP_URL)

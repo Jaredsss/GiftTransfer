@@ -121,6 +121,11 @@ class Database:
                 paid_at INTEGER
             );
             CREATE INDEX IF NOT EXISTS invoices_status ON invoices(status);
+            CREATE TABLE IF NOT EXISTS attributes (
+                gift_id INTEGER PRIMARY KEY,
+                data TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS collections (
                 gift_id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -238,6 +243,27 @@ class Database:
         )
         await self.conn.commit()
         return cur.rowcount == 1
+
+    # --- модели / фоны / узоры коллекций ---
+
+    async def get_attributes(self, gift_id: int) -> tuple[float, dict] | None:
+        async with self.conn.execute(
+            "SELECT data, updated_at FROM attributes WHERE gift_id=?", (gift_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return (row["updated_at"], json.loads(row["data"])) if row else None
+
+    async def save_attributes(self, gift_id: int, data: dict) -> None:
+        await self.conn.execute(
+            """INSERT INTO attributes (gift_id, data, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(gift_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at""",
+            (gift_id, json.dumps(data), int(time.time())),
+        )
+        await self.conn.commit()
+
+    async def all_attributes(self) -> list[tuple[int, dict]]:
+        async with self.conn.execute("SELECT gift_id, data FROM attributes") as cur:
+            return [(r["gift_id"], json.loads(r["data"])) for r in await cur.fetchall()]
 
     # --- collections ---
 

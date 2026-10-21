@@ -1,6 +1,10 @@
 const tg = window.Telegram?.WebApp;
 tg?.ready();
 tg?.expand();
+try {
+  tg?.setHeaderColor?.("#07060f");
+  tg?.setBackgroundColor?.("#07060f");
+} catch (_) { /* старые клиенты */ }
 
 const state = { user: null, plans: [], collections: [], settings: null, attrs: {}, pickMode: false };
 const $ = (sel) => document.querySelector(sel);
@@ -228,9 +232,14 @@ $("#search").addEventListener("input", renderCollections);
 
 const sheet = { collection: null, kind: "models" };
 
-async function getAttrs(id) {
+async function loadItems() {
+  if (sheet.kind === "backdrops") {
+    if (!state.backdrops) state.backdrops = (await api("/api/backdrops")).backdrops;
+    return state.backdrops;
+  }
+  const id = sheet.collection.id;
   if (!state.attrs[id]) state.attrs[id] = await api(`/api/collections/${id}/attributes`);
-  return state.attrs[id];
+  return state.attrs[id][sheet.kind];
 }
 
 function selectedList() {
@@ -251,7 +260,7 @@ async function openSheet(collection, kind = "models") {
   sheet.collection = collection;
   sheet.kind = kind;
   const isBackdrops = kind === "backdrops";
-  $("#sheet-title").textContent = isBackdrops ? "Фоны" : collection.title;
+  $("#sheet-title").textContent = isBackdrops ? "🎨 Фоны" : collection.title;
   $("#sheet-tabs").classList.toggle("hidden", isBackdrops);
   const tracking = !isBackdrops && state.settings.collections.length > 0;
   $("#sheet-track").classList.toggle("hidden", !tracking);
@@ -278,19 +287,25 @@ function setSheetTab(kind) {
 async function renderChips() {
   const box = $("#chips");
   const info = $("#sheet-info");
-  box.innerHTML = `<p class="muted">Загрузка…</p>`;
+  box.innerHTML = `<div class="loader"></div>`;
   let items;
   try {
-    items = (await getAttrs(sheet.collection.id))[sheet.kind];
+    items = await loadItems();
   } catch (e) {
     box.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`;
+    const retry = document.createElement("button");
+    retry.className = "btn ghost";
+    retry.textContent = "Повторить";
+    retry.onclick = renderChips;
+    box.appendChild(retry);
     return;
   }
   const chosen = new Set(selectedList());
   const query = $("#sheet-search").value.trim().toLowerCase();
-  info.textContent = chosen.size
-    ? `Уведомления только при выбранных (${chosen.size})`
-    : "Ничего не выбрано — подходят любые";
+  const scope = sheet.kind === "backdrops" ? " (для всех коллекций)" : "";
+  info.textContent = (chosen.size
+    ? `Уведомления только при выбранных: ${chosen.size}`
+    : "Ничего не выбрано — подходят любые") + scope;
   box.innerHTML = "";
   items.filter((a) => a.name.toLowerCase().includes(query)).forEach((a) => {
     const chip = document.createElement("button");
@@ -319,12 +334,7 @@ $("#sheet-close").addEventListener("click", closeSheet);
 $("#sheet-track-input").addEventListener("change", (e) => setTracked(sheet.collection.id, e.target.checked));
 tg?.BackButton?.onClick(closeSheet);
 
-$("#backdrops-row").addEventListener("click", () => {
-  // Фоны общие для всех коллекций — берём список у любой коллекции с улучшениями
-  const source = state.collections.find((c) => c.active) || state.collections[0];
-  if (!source) return toast("Список фонов появится после запуска мониторинга");
-  openSheet(source, "backdrops");
-});
+$("#backdrops-row").addEventListener("click", () => openSheet(null, "backdrops"));
 
 // --- вкладки ---
 

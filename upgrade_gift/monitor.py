@@ -47,13 +47,19 @@ class Monitor:
 
     # --- запросы к Telegram ---
 
-    async def _call(self, request):
+    async def _call(self, request, max_wait: float | None = None):
+        """max_wait — для запросов из мини-аппа: идут вне очереди сканера
+        и не ждут долгий FloodWait, а сразу падают."""
         while True:
             try:
+                if max_wait is not None:
+                    return await self.client(request)
                 async with self._sem:
                     return await self.client(request)
             except FloodWaitError as e:
                 log.warning("FloodWait %ss на %s", e.seconds, type(request).__name__)
+                if max_wait is not None and e.seconds > max_wait:
+                    raise
                 await asyncio.sleep(e.seconds + 1)
 
     async def fetch(self, slug: str):
@@ -99,11 +105,20 @@ class Monitor:
     async def attributes(self, gift_id: int) -> dict:
         """Все модели, фоны и узоры коллекции (с редкостью)."""
         cached = self._attrs.get(gift_id)
+        if not cached:
+            stored = await self.db.get_attributes(gift_id)
+            if stored:
+                cached = self._attrs[gift_id] = stored
         if cached and time.time() - cached[0] < ATTRS_TTL:
             return cached[1]
-        res = await self._call(GetResaleStarGiftsRequest(
-            gift_id=gift_id, offset="", limit=1, attributes_hash=0,
-        ))
+        try:
+            res = await self._call(GetResaleStarGiftsRequest(
+                gift_id=gift_id, offset="", limit=1, attributes_hash=0,
+            ), max_wait=5)
+        except (RPCError, FloodWaitError):
+            if cached:
+                return cached[1]  # лучше устаревший список, чем никакого
+            raise
         data = {"models": [], "backdrops": [], "patterns": []}
         kinds = {
             types.StarGiftAttributeModel: "models",
@@ -117,7 +132,30 @@ class Monitor:
         for items in data.values():
             items.sort(key=lambda a: (a["rarity"] is None, a["rarity"] or 0, a["name"]))
         self._attrs[gift_id] = (time.time(), data)
+        await self.db.save_attributes(gift_id, data)
         return data
+
+    async def backdrops(self) -> list[dict]:
+        """Фоны общие для всех коллекций: объединяем всё, что уже загружено,
+        а если ничего нет — пробуем несколько коллекций по очереди."""
+        found: dict[str, dict] = {}
+        for _, data in await self.db.all_attributes():
+            for b in data.get("backdrops", []):
+                found.setdefault(b["name"], b)
+        if not found:
+            active = [c for c in await self.db.collections() if c["active"]]
+            active.sort(key=lambda c: -c["issued"])
+            for col in active[:5]:
+                try:
+                    data = await self.attributes(col["gift_id"])
+                except Exception as e:
+                    log.warning("Фоны из %s: %s", col["title"], e)
+                    continue
+                for b in data["backdrops"]:
+                    found.setdefault(b["name"], b)
+                if found:
+                    break
+        return sorted(found.values(), key=lambda a: a["name"])
 
     # --- коллекции ---
 

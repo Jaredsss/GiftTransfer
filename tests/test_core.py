@@ -156,6 +156,8 @@ async def test_monitor_attributes(db):
 
     data = await Monitor(Client(), db, None).attributes(42)
     assert [m["name"] for m in data["models"]] == ["A", "B"] and data["patterns"][0]["label"] == "редкая"
+    # Кэш в БД переживает перезапуск
+    assert (await db.get_attributes(42))[1] == data
 
 
 async def _none():
@@ -173,10 +175,14 @@ async def test_api(db, aiohttp_client):
             await db.extend_subscription(7, 30)
             return "paid"
 
-    async def attrs(gift_id):
-        return {"models": [{"name": "Gold", "rarity": 0.5, "label": "0.5%"}], "backdrops": [], "patterns": []}
+    class FakeMonitor:
+        async def attributes(self, gift_id):
+            return {"models": [{"name": "Gold", "rarity": 0.5, "label": "0.5%"}], "backdrops": [], "patterns": []}
 
-    client = await aiohttp_client(create_app(db, FakeBilling(), attrs))
+        async def backdrops(self):
+            return [{"name": "Onyx", "rarity": 2, "label": "2%"}]
+
+    client = await aiohttp_client(create_app(db, FakeBilling(), FakeMonitor()))
     headers = {"X-Telegram-Init-Data": make_init_data({"id": 7, "first_name": "Ivan"})}
 
     assert (await client.get("/api/me")).status == 401
@@ -198,6 +204,8 @@ async def test_api(db, aiohttp_client):
     assert (await r.json())["settings"]["models"] == {"42": ["Gold"]}
     r = await client.get("/api/collections/42/attributes", headers=headers)
     assert (await r.json())["models"][0]["name"] == "Gold"
+    r = await client.get("/api/backdrops", headers=headers)
+    assert (await r.json())["backdrops"][0]["name"] == "Onyx"
 
     assert (await client.get("/")).status == 200
     assert (await client.get("/static/app.js")).status == 200

@@ -1,11 +1,11 @@
 """HTTP-сервер мини-аппа: статика + API + вебхук xRocket."""
 import hashlib
+import asyncio
 import hmac
 import json
 import logging
 import time
 from pathlib import Path
-from typing import Awaitable, Callable
 from urllib.parse import parse_qsl
 
 from aiohttp import web
@@ -64,8 +64,7 @@ def _forbidden() -> web.HTTPForbidden:
                              content_type="application/json")
 
 
-def create_app(db: Database, billing: Billing | None,
-               attributes: Callable[[int], Awaitable[dict]] | None = None) -> web.Application:
+def create_app(db: Database, billing: Billing | None, monitor=None) -> web.Application:
     routes = web.RouteTableDef()
 
     async def current_user(request: web.Request) -> dict:
@@ -119,14 +118,28 @@ def create_app(db: Database, billing: Billing | None,
     @routes.get("/api/collections/{id:\\d+}/attributes")
     async def collection_attributes(request):
         await subscribed_user(request)
-        if not attributes:
+        if not monitor:
             return web.json_response({"error": "Мониторинг не запущен"}, status=503)
         try:
-            data = await attributes(int(request.match_info["id"]))
+            data = await asyncio.wait_for(monitor.attributes(int(request.match_info["id"])), 20)
         except Exception as e:
-            log.warning("Атрибуты коллекции %s: %s", request.match_info["id"], e)
-            return web.json_response({"error": "Не удалось загрузить список"}, status=502)
+            log.warning("Атрибуты коллекции %s: %r", request.match_info["id"], e)
+            return web.json_response({"error": "Telegram не отдал список, попробуйте через минуту"}, status=502)
         return web.json_response(data)
+
+    @routes.get("/api/backdrops")
+    async def backdrops(request):
+        await subscribed_user(request)
+        if not monitor:
+            return web.json_response({"error": "Мониторинг не запущен"}, status=503)
+        try:
+            items = await asyncio.wait_for(monitor.backdrops(), 30)
+        except Exception as e:
+            log.warning("Фоны: %r", e)
+            items = []
+        if not items:
+            return web.json_response({"error": "Telegram не отдал список фонов, попробуйте через минуту"}, status=502)
+        return web.json_response({"backdrops": items})
 
     @routes.post("/api/invoices")
     async def create_invoice(request):
