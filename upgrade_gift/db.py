@@ -134,6 +134,13 @@ class Database:
         user["settings"] = sanitize_settings(json.loads(user["settings"] or "{}"))
         return user
 
+    async def find_user_by_username(self, username: str) -> dict | None:
+        async with self.conn.execute(
+            "SELECT id FROM users WHERE username=? COLLATE NOCASE", (username,)
+        ) as cur:
+            row = await cur.fetchone()
+        return await self.get_user(row["id"]) if row else None
+
     async def save_settings(self, user_id: int, settings: dict) -> None:
         await self.conn.execute(
             "UPDATE users SET settings=? WHERE id=?", (json.dumps(settings), user_id)

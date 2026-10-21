@@ -90,7 +90,7 @@ class Notifier:
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=50_000)
 
     async def dispatch(self, event: GiftEvent) -> None:
-        log.info("Улучшен %s (флор %s)", event.slug, event.floor_usd)
+        log.info("Улучшен %s (флор $%s / %s⭐)", event.slug, event.floor_usd, event.floor_stars)
         for sub in await self.db.subscribers():
             if matches(event, sub["settings"]):
                 try:

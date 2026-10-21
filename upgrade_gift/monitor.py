@@ -74,8 +74,11 @@ class Monitor:
             # floor_price приходит в центах валюты (USD)
             if info.floor_price is not None and info.currency.upper() == "USD":
                 floor_usd = info.floor_price / 100
+            else:
+                log.info("Флор %s: нет оценки в $ (currency=%s floor=%s)",
+                         slug, info.currency, info.floor_price)
         except RPCError as e:
-            log.debug("value info %s: %s", slug, e)
+            log.warning("Флор (value info) %s: %s", slug, e)
         try:
             resale = await self._call(GetResaleStarGiftsRequest(
                 gift_id=gift_id, offset="", limit=1, sort_by_price=True, stars_only=True,
@@ -86,7 +89,7 @@ class Monitor:
                         floor_stars = amount.amount
                         break
         except RPCError as e:
-            log.debug("resale %s: %s", gift_id, e)
+            log.warning("Флор (маркет) %s: %s", gift_id, e)
 
         self._floor_cache[gift_id] = (time.time(), floor_usd, floor_stars)
         return floor_usd, floor_stars

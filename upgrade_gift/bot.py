@@ -65,15 +65,17 @@ def create_router(db: Database) -> Router:
 
     @router.message(Command("grant"), F.from_user.id.in_(config.ADMIN_IDS))
     async def grant(message: Message, command: CommandObject):
-        try:
-            user_id, days = (int(x) for x in (command.args or "").split())
-        except ValueError:
-            await message.answer("Использование: /grant <user_id> <дней>")
+        args = (command.args or "").split()
+        if len(args) != 2 or not args[1].isdigit():
+            await message.answer("Использование: /grant &lt;id или @username&gt; &lt;дней&gt;")
             return
-        if not await db.get_user(user_id):
-            await message.answer("Пользователь ещё не запускал бота.")
+        target, days = args[0], int(args[1])
+        user = (await db.get_user(int(target)) if target.isdigit()
+                else await db.find_user_by_username(target.lstrip("@")))
+        if not user:
+            await message.answer("Пользователь не найден — он должен сначала нажать /start в боте.")
             return
-        until = await db.extend_subscription(user_id, days)
+        until = await db.extend_subscription(user["id"], days)
         await message.answer(f"Готово, подписка до {time.strftime('%d.%m.%Y %H:%M', time.gmtime(until))} UTC")
 
     @router.message(Command("stats"), F.from_user.id.in_(config.ADMIN_IDS))
@@ -83,6 +85,10 @@ def create_router(db: Database) -> Router:
             f"👥 Пользователей: {s['users']}\n✅ Активных подписок: {s['subs']}\n"
             f"💳 Оплат: {s['paid']} на {s['revenue']:g} {config.XROCKET_CURRENCY}"
         )
+
+    @router.message()
+    async def fallback(message: Message):
+        await message.answer("Настройки и подписка — в мини-аппе 👇", reply_markup=_app_keyboard())
 
     return router
 
