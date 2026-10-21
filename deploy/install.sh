@@ -64,6 +64,8 @@ if [ -z "$PROXY_MODE" ]; then
     PROXY_MODE=caddy
   elif [ "${p80:-nginx}" = nginx ] && [ "${p443:-nginx}" = nginx ]; then
     PROXY_MODE=nginx
+  elif [ "${p80:-caddy}" = caddy ] && [ "${p443:-caddy}" = caddy ]; then
+    PROXY_MODE=hostcaddy  # Caddy, установленный прямо на сервере
   else
     echo "Порты заняты: 80 -> ${p80:-свободен}, 443 -> ${p443:-свободен}" >&2
     ss -ltnp 'sport = :80 or sport = :443' >&2
@@ -73,7 +75,40 @@ if [ -z "$PROXY_MODE" ]; then
   set_env PROXY_MODE "$PROXY_MODE"
 fi
 
-if [ "$PROXY_MODE" = nginx ]; then
+if [ "$PROXY_MODE" = hostcaddy ]; then
+  echo "==> Настраиваю Caddy сервера для $DOMAIN"
+  conf=$(systemctl cat caddy 2>/dev/null | grep -o -- '--config [^ ]*' | head -1 | cut -d' ' -f2)
+  conf=${conf:-/etc/caddy/Caddyfile}
+  [ -f "$conf" ] || { echo "Не найден конфиг Caddy ($conf)" >&2; exit 1; }
+  backup="$conf.upgrade-gift-$(date +%Y%m%d%H%M%S).bak"
+  cp "$conf" "$backup"
+  # Адреса блоков с нашим доменом: если в том же блоке есть другие сайты — не трогаем
+  others=$(grep -E "^[^#[:space:]][^{]*$DOMAIN[^{]*\{" "$conf" | sed 's/{.*//' | tr ', ' '\n\n' \
+    | sed -E 's#^https?://##; s#:[0-9]+$##' | grep -vxE "|$DOMAIN|www\.$DOMAIN" || true)
+  if [ -n "$others" ]; then
+    echo "В $conf домен $DOMAIN описан вместе с другими сайтами ($others) — поправьте вручную." >&2
+    exit 1
+  fi
+  # Убираем старые блоки домена и добавляем новый
+  awk -v d="$DOMAIN" '
+    {
+      line = $0; opens = gsub(/\{/, "{", line); closes = gsub(/\}/, "}", line)
+      if (!skip && depth == 0 && $0 !~ /^[[:space:]]*#/ && index($0, d) > 0 && opens > 0) { skip = 1; sdepth = 0 }
+      if (skip) { sdepth += opens - closes; if (sdepth <= 0) skip = 0; next }
+      depth += opens - closes
+      print
+    }' "$backup" > "$conf"
+  printf '\n%s {\n\tencode gzip\n\treverse_proxy 127.0.0.1:8080\n}\n' "$DOMAIN" >> "$conf"
+  if ! caddy validate --config "$conf" --adapter caddyfile >/dev/null 2>&1; then
+    cp "$backup" "$conf"
+    echo "Новый конфиг Caddy не прошёл проверку, вернул старый ($backup)." >&2
+    caddy validate --config "$conf" --adapter caddyfile || true
+    exit 1
+  fi
+  systemctl reload caddy 2>/dev/null || caddy reload --config "$conf" --adapter caddyfile
+  echo "   старый конфиг сохранён: $backup"
+  docker compose up -d --remove-orphans
+elif [ "$PROXY_MODE" = nginx ]; then
   echo "==> Настраиваю nginx для $DOMAIN"
   backup=/etc/nginx/upgrade-gift-backup
   # Старые конфиги этого домена (например, от прошлого бота) отключаем, копия — в $backup
