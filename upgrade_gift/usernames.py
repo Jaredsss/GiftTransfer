@@ -10,6 +10,7 @@ import asyncio
 import logging
 import re
 import time
+from pathlib import Path
 from typing import Awaitable, Callable
 
 import aiohttp
@@ -41,7 +42,14 @@ news media music movie film video photo art design style love date dating friend
 travel taxi food pizza coffee shop deliver health doctor fit sport bet
 """.split()
 
-WORDS = sorted(set(PREMIUM + """
+# Большой словарь осмысленных слов — words.txt рядом с модулем
+_WORDS_FILE = Path(__file__).with_name("words.txt")
+EXTRA_WORDS = [
+    w for line in _WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    if not line.startswith("#") for w in line.split()
+]
+
+WORDS = sorted(set(PREMIUM + EXTRA_WORDS + """
 ask help support assist answer search find seek guide tutor teach learn study school quiz test exam
 write writer text translate voice speak talk story book read poem joke meme fun happy smile
 sale sales offer promo bonus reward earn invest wallet swap mint drop air airdrop farm stake

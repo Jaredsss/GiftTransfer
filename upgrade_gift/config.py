@@ -43,8 +43,8 @@ XROCKET_BASE_URL = os.getenv("XROCKET_BASE_URL", "https://pay.xrocket.tg").rstri
 USERNAME_HUNTER = os.getenv("USERNAME_HUNTER", "1").strip() not in ("0", "false", "no")
 USERNAME_CHECK_INTERVAL = _float("USERNAME_CHECK_INTERVAL", 4.0)
 # Админам находки приходят всегда — с оценкой не ниже этой; сводка раз в N минут
-USERNAME_ADMIN_MIN_SCORE = _int("USERNAME_ADMIN_MIN_SCORE", 60)
-USERNAME_DIGEST_MINUTES = _float("USERNAME_DIGEST_MINUTES", 10)
+USERNAME_ADMIN_MIN_SCORE = _int("USERNAME_ADMIN_MIN_SCORE", 0)
+USERNAME_DIGEST_MINUTES = _float("USERNAME_DIGEST_MINUTES", 1)
 
 DB_PATH = os.getenv("DB_PATH", "data/upgrade_gift.db")
 
