@@ -39,6 +39,10 @@ XROCKET_WEBHOOK_SECRET = os.getenv("XROCKET_WEBHOOK_SECRET", "").strip()
 XROCKET_CURRENCY = os.getenv("XROCKET_CURRENCY", "USDT").strip()
 XROCKET_BASE_URL = os.getenv("XROCKET_BASE_URL", "https://pay.xrocket.tg").rstrip("/")
 
+# Поиск свободных юзернеймов (пауза между проверками, сек)
+USERNAME_HUNTER = os.getenv("USERNAME_HUNTER", "1").strip() not in ("0", "false", "no")
+USERNAME_CHECK_INTERVAL = _float("USERNAME_CHECK_INTERVAL", 4.0)
+
 DB_PATH = os.getenv("DB_PATH", "data/upgrade_gift.db")
 
 # Тарифы: цена в XROCKET_CURRENCY (USDT ≈ $)

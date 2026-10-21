@@ -19,9 +19,10 @@
   <div id="status" class="card status">Загрузка…</div>
 
   <nav class="tabs main">
-    <button class="tab active" data-tab="sub">Подписка</button>
-    <button class="tab" data-tab="notify">Уведомления</button>
-    <button class="tab" data-tab="gifts">Подарки</button>
+    <button class="tab active" data-tab="sub"><i>💳</i>Подписка</button>
+    <button class="tab" data-tab="notify"><i>🔔</i>Алерты</button>
+    <button class="tab" data-tab="gifts"><i>🎁</i>Подарки</button>
+    <button class="tab" data-tab="names"><i>🔎</i>Ники</button>
   </nav>
 
   <!-- Подписка -->
@@ -84,6 +85,38 @@
         <input type="search" id="search" placeholder="Поиск коллекции…">
       </div>
       <div id="collections" class="card list"></div>
+    </div>
+  </section>
+
+  <!-- Юзернеймы -->
+  <section id="tab-names" class="panel hidden">
+    <div class="card lock hidden">
+      <div class="lock-icon">🔒</div>
+      <b>Поиск юзернеймов доступен с подпиской</b>
+      <p class="muted">Ищите свободные красивые имена для ботов с окончаниями ai, game, app, agent.</p>
+      <button class="btn go-sub">Выбрать тариф</button>
+    </div>
+    <div class="locked-content hidden">
+      <div class="card pad">
+        <b class="card-title">🔎 Проверить юзернеймы</b>
+        <p class="muted small">Слова через пробел или запятую. Выбранные окончания добавятся к каждому слову; без окончаний имя проверяется как есть.</p>
+        <textarea id="nm-words" rows="2" placeholder="pay chat crypto"></textarea>
+        <div class="chips" id="nm-suffixes"></div>
+        <button class="btn wide" id="nm-check">Проверить</button>
+        <div id="nm-results" class="list"></div>
+      </div>
+
+      <h3>🔥 Лучшие свободные</h3>
+      <div class="chips" id="top-suffix"></div>
+      <div class="chips" id="top-status"></div>
+      <p class="muted small" id="top-stats"></p>
+      <div id="top-list" class="card list"></div>
+
+      <h3>Уведомления о находках</h3>
+      <div class="card">
+        <label class="row"><span>Сообщать о новых свободных<small>бот напишет, как только найдёт красивое имя</small></span><input type="checkbox" data-key="notify_usernames" class="switch"></label>
+        <label class="row"><span>Оценка от<small>0–100, чем выше — тем красивее</small></span><input type="number" min="0" max="100" step="1" placeholder="70" data-key="username_min_score"></label>
+      </div>
     </div>
   </section>
 

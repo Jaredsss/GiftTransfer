@@ -89,34 +89,61 @@ def format_event(event: GiftEvent, s: dict) -> str:
     return "\n".join(lines)
 
 
+def format_username(item: dict) -> str:
+    name = html.escape(item["name"])
+    return (
+        "🔎 <b>Найден свободный юзернейм!</b>\n\n"
+        f"<code>@{name}</code>\n"
+        f"⭐ Оценка: <b>{item['score']}/100</b>\n"
+        f"🏷 Окончание: {html.escape(item['suffix'] or '—')}\n\n"
+        "Займите его, пока не забрали: создайте бота в @BotFather или укажите имя в профиле."
+    )
+
+
 class Notifier:
     def __init__(self, bot: Bot, db: Database):
         self.bot = bot
         self.db = db
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=50_000)
 
+    def _put(self, user_id: int, text: str, keyboard, silent: bool, preview_url: str | None) -> bool:
+        try:
+            self.queue.put_nowait((user_id, text, keyboard, silent, preview_url))
+            return True
+        except asyncio.QueueFull:
+            log.warning("Очередь уведомлений переполнена")
+            return False
+
     async def dispatch(self, event: GiftEvent) -> None:
         log.info("Улучшен %s (флор $%s / %s⭐)", event.slug, event.floor_usd, event.floor_stars)
-        for sub in await self.db.subscribers():
-            if matches(event, sub["settings"]):
-                try:
-                    self.queue.put_nowait((sub["id"], event, sub["settings"]))
-                except asyncio.QueueFull:
-                    log.warning("Очередь уведомлений переполнена")
-                    return
-
-    async def _send(self, user_id: int, event: GiftEvent, s: dict) -> None:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🎁 Открыть подарок", url=event.link)
         ]])
+        for sub in await self.db.subscribers():
+            s = sub["settings"]
+            if matches(event, s):
+                if not self._put(sub["id"], format_event(event, s), keyboard, s["silent"], event.link):
+                    return
+
+    async def dispatch_username(self, item: dict) -> None:
+        log.info("Свободен юзернейм @%s (оценка %s)", item["name"], item["score"])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")
+        ]])
+        for sub in await self.db.subscribers():
+            s = sub["settings"]
+            if s["notify_usernames"] and item["score"] >= (s["username_min_score"] or 0):
+                if not self._put(sub["id"], format_username(item), keyboard, s["silent"], None):
+                    return
+
+    async def _send(self, user_id: int, text: str, keyboard, silent: bool, preview_url: str | None) -> None:
+        preview = (LinkPreviewOptions(url=preview_url, prefer_large_media=True) if preview_url
+                   else LinkPreviewOptions(is_disabled=True))
         for _ in range(3):
             try:
                 await self.bot.send_message(
-                    user_id,
-                    format_event(event, s),
-                    reply_markup=keyboard,
-                    disable_notification=s["silent"],
-                    link_preview_options=LinkPreviewOptions(url=event.link, prefer_large_media=True),
+                    user_id, text, reply_markup=keyboard,
+                    disable_notification=silent, link_preview_options=preview,
                 )
                 return
             except TelegramRetryAfter as e:
@@ -130,6 +157,5 @@ class Notifier:
 
     async def run(self) -> None:
         while True:
-            user_id, event, s = await self.queue.get()
-            await self._send(user_id, event, s)
+            await self._send(*await self.queue.get())
             await asyncio.sleep(SEND_DELAY)

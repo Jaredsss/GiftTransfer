@@ -22,6 +22,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "show_transfer": True,
     "show_attributes": True,
     "silent": False,              # без звука
+    "notify_usernames": False,    # сообщать о найденных свободных юзернеймах
+    "username_min_score": 70,     # ...с оценкой не ниже
 }
 
 _BOOL_KEYS = [k for k, v in DEFAULT_SETTINGS.items() if isinstance(v, bool)]
@@ -45,7 +47,7 @@ def _names_by_collection(value) -> dict[str, list[str]]:
             if names:
                 result[gift_id] = names
     return result
-_NUM_KEYS = ["max_number", "min_floor", "max_floor", "max_model_rarity"]
+_NUM_KEYS = ["max_number", "min_floor", "max_floor", "max_model_rarity", "username_min_score"]
 
 
 def sanitize_settings(raw: Any, base: dict | None = None) -> dict:
@@ -70,7 +72,7 @@ def sanitize_settings(raw: Any, base: dict | None = None) -> dict:
                 continue
             if num < 0 or num != num or num > 1e12:
                 continue
-            result[key] = int(num) if key == "max_number" else num
+            result[key] = int(num) if key in ("max_number", "username_min_score") else num
     for key in ("models", "patterns"):
         if key in raw:
             result[key] = _names_by_collection(raw[key])
@@ -126,6 +128,15 @@ class Database:
                 data TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS usernames (
+                name TEXT PRIMARY KEY,
+                suffix TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                checked_at INTEGER NOT NULL,
+                free_since INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS usernames_status ON usernames(status, score);
             CREATE TABLE IF NOT EXISTS collections (
                 gift_id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -243,6 +254,47 @@ class Database:
         )
         await self.conn.commit()
         return cur.rowcount == 1
+
+    # --- юзернеймы ---
+
+    async def get_username(self, name: str) -> dict | None:
+        async with self.conn.execute("SELECT * FROM usernames WHERE name=?", (name,)) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def save_username(self, name: str, suffix: str, score: int, status: str) -> dict:
+        now = int(time.time())
+        await self.conn.execute(
+            """INSERT INTO usernames (name, suffix, score, status, checked_at, free_since)
+               VALUES (?, ?, ?, ?, ?, CASE WHEN ?='free' THEN ? END)
+               ON CONFLICT(name) DO UPDATE SET score=excluded.score, status=excluded.status,
+                   checked_at=excluded.checked_at,
+                   free_since=CASE WHEN excluded.status='free'
+                       THEN COALESCE(usernames.free_since, excluded.free_since) END""",
+            (name, suffix, score, status, now, status, now),
+        )
+        await self.conn.commit()
+        return await self.get_username(name)
+
+    async def usernames_all(self) -> list[dict]:
+        async with self.conn.execute("SELECT name, status, checked_at FROM usernames") as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def usernames_top(self, statuses: tuple[str, ...], suffix: str | None, limit: int) -> list[dict]:
+        marks = ",".join("?" * len(statuses))
+        query = f"SELECT * FROM usernames WHERE status IN ({marks})"
+        params: list = list(statuses)
+        if suffix:
+            query += " AND suffix=?"
+            params.append(suffix)
+        query += " ORDER BY score DESC, length(name), name LIMIT ?"
+        params.append(limit)
+        async with self.conn.execute(query, params) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def usernames_stats(self) -> dict:
+        async with self.conn.execute("SELECT status, COUNT(*) FROM usernames GROUP BY status") as cur:
+            return {r[0]: r[1] for r in await cur.fetchall()}
 
     # --- модели / фоны / узоры коллекций ---
 

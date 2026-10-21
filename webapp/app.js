@@ -336,9 +336,130 @@ tg?.BackButton?.onClick(closeSheet);
 
 $("#backdrops-row").addEventListener("click", () => openSheet(null, "backdrops"));
 
+// --- юзернеймы ---
+
+const SUFFIXES = ["ai", "game", "app", "agent", "bot"];
+const STATUS = {
+  free: ["🟢 свободен", "free"],
+  fragment: ["💎 Fragment", "fragment"],
+  taken: ["🔴 занят", "taken"],
+  invalid: ["⚪ нельзя", "taken"],
+  checking: ["⏳ проверка", "checking"],
+  unknown: ["❔ не удалось", "taken"],
+};
+const nm = { suffixes: new Set(["ai", "game", "app", "agent"]), topSuffix: "", topStatus: "free", results: [], since: 0 };
+
+function chipRow(box, items, isOn, onClick) {
+  box.innerHTML = "";
+  items.forEach(([value, label]) => {
+    const chip = document.createElement("button");
+    chip.className = "chip small-chip" + (isOn(value) ? " on" : "");
+    chip.textContent = label;
+    chip.onclick = () => onClick(value);
+    box.appendChild(chip);
+  });
+}
+
+function renderSuffixChips() {
+  chipRow($("#nm-suffixes"), SUFFIXES.map((s) => [s, s]), (s) => nm.suffixes.has(s), (s) => {
+    nm.suffixes.has(s) ? nm.suffixes.delete(s) : nm.suffixes.add(s);
+    renderSuffixChips();
+  });
+  chipRow($("#top-suffix"), [["", "Все"], ...SUFFIXES.map((s) => [s, s])], (s) => nm.topSuffix === s, (s) => {
+    nm.topSuffix = s;
+    renderSuffixChips();
+    loadTop();
+  });
+  chipRow($("#top-status"), [["free", "🟢 Свободные"], ["fragment", "💎 На Fragment"]], (s) => nm.topStatus === s, (s) => {
+    nm.topStatus = s;
+    renderSuffixChips();
+    loadTop();
+  });
+}
+
+function nameRow(item) {
+  const [label, cls] = STATUS[item.status] || STATUS.unknown;
+  const row = document.createElement("div");
+  row.className = "row name-row";
+  row.innerHTML = `<span><b>@${escapeHtml(item.name)}</b><small>оценка ${item.score}/100${item.suffix ? " · " + item.suffix : ""}</small></span>
+    <span class="pill ${cls}">${label}</span>`;
+  row.onclick = () => {
+    if (item.status === "fragment") {
+      const url = `https://fragment.com/username/${item.name}`;
+      tg?.openLink ? tg.openLink(url) : window.open(url, "_blank");
+      return;
+    }
+    navigator.clipboard?.writeText("@" + item.name).then(() => toast(`@${item.name} скопирован`), () => {});
+  };
+  return row;
+}
+
+function renderResults() {
+  const box = $("#nm-results");
+  box.innerHTML = "";
+  nm.results.forEach((item) => box.appendChild(nameRow(item)));
+}
+
+$("#nm-check").addEventListener("click", async () => {
+  const words = $("#nm-words").value.split(/[\s,;]+/).filter(Boolean);
+  if (!words.length) return toast("Введите хотя бы одно слово");
+  const button = $("#nm-check");
+  button.disabled = true;
+  try {
+    const res = await api("/api/usernames/check", {
+      method: "POST", body: JSON.stringify({ words, suffixes: [...nm.suffixes] }),
+    });
+    nm.results = res.items;
+    nm.since = res.since;
+    renderResults();
+    pollResults();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function pollResults() {
+  clearTimeout(pollResults.timer);
+  const pending = nm.results.filter((r) => r.status === "checking").map((r) => r.name);
+  if (!pending.length) return;
+  pollResults.timer = setTimeout(async () => {
+    try {
+      const res = await api(`/api/usernames/status?since=${nm.since}&names=${encodeURIComponent(pending.join(","))}`);
+      const fresh = Object.fromEntries(res.items.map((r) => [r.name, r]));
+      nm.results = nm.results.map((r) => fresh[r.name] || r);
+      renderResults();
+    } catch (_) { /* повторим */ }
+    pollResults();
+  }, 3000);
+}
+
+async function loadTop() {
+  const box = $("#top-list");
+  box.innerHTML = `<div class="loader"></div>`;
+  try {
+    const q = new URLSearchParams({ status: nm.topStatus, suffix: nm.topSuffix });
+    const res = await api(`/api/usernames/top?${q}`);
+    const st = res.stats;
+    const checked = Object.values(st).reduce((a, b) => a + b, 0);
+    $("#top-stats").textContent = res.enabled
+      ? `Проверено ${checked.toLocaleString("ru-RU")} · свободных ${st.free || 0} · на Fragment ${st.fragment || 0}. Нажмите на имя, чтобы скопировать.`
+      : "Поиск сейчас выключен";
+    box.innerHTML = "";
+    res.items.forEach((item) => box.appendChild(nameRow(item)));
+    if (!res.items.length) box.innerHTML = `<p class="muted" style="padding:12px 0">Пока ничего не найдено — поиск идёт в фоне, загляните позже.</p>`;
+  } catch (e) {
+    box.innerHTML = `<p class="muted" style="padding:12px 0">${escapeHtml(e.message)}</p>`;
+  }
+}
+
+renderSuffixChips();
+
 // --- вкладки ---
 
 function openTab(name) {
+  if (name === "names" && state.user?.active) loadTop();
   document.querySelectorAll(".tabs.main .tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${name}`));
 }

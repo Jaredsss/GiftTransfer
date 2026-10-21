@@ -13,6 +13,7 @@ from aiohttp import web
 from . import config
 from .db import Database, sanitize_settings
 from .payments import Billing, XRocketError
+from .usernames import SUFFIXES, is_valid, score, split_name
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +65,20 @@ def _forbidden() -> web.HTTPForbidden:
                              content_type="application/json")
 
 
-def create_app(db: Database, billing: Billing | None, monitor=None) -> web.Application:
+MAX_CHECK = 40  # имён за одну ручную проверку
+
+
+def _username_view(name: str, row: dict | None) -> dict:
+    return {
+        "name": name,
+        "suffix": split_name(name)[1],
+        "score": score(name),
+        "status": row["status"] if row else ("invalid" if not is_valid(name) else "checking"),
+        "checked_at": row["checked_at"] if row else None,
+    }
+
+
+def create_app(db: Database, billing: Billing | None, monitor=None, hunter=None) -> web.Application:
     routes = web.RouteTableDef()
 
     async def current_user(request: web.Request) -> dict:
@@ -140,6 +154,67 @@ def create_app(db: Database, billing: Billing | None, monitor=None) -> web.Appli
         if not items:
             return web.json_response({"error": "Telegram не отдал список фонов, попробуйте через минуту"}, status=502)
         return web.json_response({"backdrops": items})
+
+    @routes.get("/api/usernames/top")
+    async def usernames_top(request):
+        await subscribed_user(request)
+        suffix = request.query.get("suffix") or None
+        if suffix and suffix not in SUFFIXES:
+            raise web.HTTPBadRequest()
+        show = request.query.get("status", "free")
+        statuses = ("free", "fragment") if show == "all" else (show,) if show in ("free", "fragment") else ("free",)
+        items = await db.usernames_top(statuses, suffix, 200)
+        return web.json_response({
+            "items": [{k: r[k] for k in ("name", "suffix", "score", "status", "checked_at", "free_since")}
+                      for r in items],
+            "stats": await db.usernames_stats(),
+            "enabled": hunter is not None,
+        })
+
+    @routes.post("/api/usernames/check")
+    async def usernames_check(request):
+        await subscribed_user(request)
+        if not hunter:
+            return web.json_response({"error": "Проверка юзернеймов не запущена"}, status=503)
+        try:
+            body = await request.json()
+            words = [str(w) for w in body.get("words", [])][:MAX_CHECK]
+            suffixes = [s for s in body.get("suffixes", []) if s in SUFFIXES]
+        except (ValueError, AttributeError, TypeError):
+            raise web.HTTPBadRequest()
+        names = []
+        for word in words:
+            word = word.strip().lstrip("@").lower()
+            if not word:
+                continue
+            variants = [word + s for s in suffixes] if suffixes else [word]
+            for name in variants:
+                if name not in names:
+                    names.append(name)
+        names = names[:MAX_CHECK]
+        result, to_check = [], []
+        for name in names:
+            row = await db.get_username(name)
+            # Ручная проверка всегда свежая, если результату больше 10 минут
+            if is_valid(name) and (not row or time.time() - row["checked_at"] > 600):
+                to_check.append(name)
+                row = None
+            result.append(_username_view(name, row))
+        hunter.request(to_check)
+        return web.json_response({"items": result, "since": int(time.time()) - 1})
+
+    @routes.get("/api/usernames/status")
+    async def usernames_status(request):
+        await subscribed_user(request)
+        names = [n for n in request.query.get("names", "").lower().split(",") if n][:MAX_CHECK]
+        since = float(request.query.get("since", 0) or 0)
+        items = []
+        for name in names:
+            row = await db.get_username(name)
+            if row and row["checked_at"] < since:
+                row = None  # ещё ждём свежую проверку
+            items.append(_username_view(name, row))
+        return web.json_response({"items": items})
 
     @routes.post("/api/invoices")
     async def create_invoice(request):

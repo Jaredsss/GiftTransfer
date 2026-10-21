@@ -94,6 +94,8 @@ h3 {
   border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer; transition: color .2s, background .2s;
 }
 .tab.active { background: var(--neon); color: #fff; box-shadow: var(--glow); }
+.tabs.main .tab { display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 12px; padding: 7px 0; }
+.tabs.main .tab i { font-style: normal; font-size: 18px; line-height: 1.2; }
 
 /* --- строки настроек --- */
 .row {
@@ -210,3 +212,26 @@ h3 {
   background: rgba(20, 16, 41, .95); color: #fff; text-align: center;
   border: 1px solid rgba(255, 62, 165, .45); box-shadow: 0 0 22px rgba(255, 62, 165, .35);
 }
+
+/* --- юзернеймы --- */
+.card.pad { padding: 16px; }
+.card-title { display: block; font-size: 16px; margin-bottom: 4px; }
+.card.pad .small { padding: 0; }
+textarea {
+  width: 100%; margin: 12px 0 4px; padding: 11px 14px; border-radius: 12px; resize: vertical;
+  border: 1px solid var(--sep); background: rgba(7, 6, 15, .7); color: var(--text); font: inherit; outline: none;
+}
+textarea:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(34, 211, 238, .35); }
+.btn.wide { width: 100%; margin-top: 12px; }
+.small-chip { padding: 6px 12px; }
+#top-status { margin: 6px 0 4px; }
+#nm-results:not(:empty) { margin-top: 10px; border-top: 1px solid var(--sep); }
+.name-row b { font-weight: 700; letter-spacing: .2px; }
+.pill {
+  flex: none; font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--sep); color: var(--hint);
+}
+.pill.free { color: var(--ok); border-color: rgba(61, 255, 168, .45); box-shadow: 0 0 10px rgba(61, 255, 168, .3); }
+.pill.fragment { color: var(--cyan); border-color: rgba(34, 211, 238, .45); box-shadow: 0 0 10px rgba(34, 211, 238, .3); }
+.pill.taken { color: var(--bad); border-color: rgba(255, 77, 109, .35); }
+.pill.checking { color: #ffd166; border-color: rgba(255, 209, 102, .4); }

@@ -14,6 +14,7 @@ from .db import Database
 from .monitor import Monitor
 from .notifier import Notifier
 from .payments import Billing, XRocket
+from .usernames import UsernameHunter
 from .webapp import create_app
 
 log = logging.getLogger("upgrade_gift")
@@ -48,7 +49,7 @@ async def main() -> None:
     if billing:
         tasks.append(asyncio.create_task(billing.poll()))
 
-    client = monitor = None
+    client = monitor = hunter = None
     if config.TG_SESSION and config.TG_API_ID and config.TG_API_HASH:
         client = TelegramClient(StringSession(config.TG_SESSION), config.TG_API_ID, config.TG_API_HASH)
         await client.connect()
@@ -57,10 +58,13 @@ async def main() -> None:
         monitor = Monitor(client, db, notifier.dispatch)
         tasks.append(asyncio.create_task(monitor.run()))
         log.info("Мониторинг улучшений запущен")
+        if config.USERNAME_HUNTER:
+            hunter = UsernameHunter(client, db, notifier.dispatch_username)
+            tasks.append(asyncio.create_task(hunter.run()))
     else:
         log.warning("TG_API_ID / TG_API_HASH / TG_SESSION не заданы — мониторинг подарков отключён")
 
-    runner = web.AppRunner(create_app(db, billing, monitor))
+    runner = web.AppRunner(create_app(db, billing, monitor, hunter))
     await runner.setup()
     await web.TCPSite(runner, config.WEB_HOST, config.WEB_PORT).start()
     log.info("Мини-апп: http://%s:%s -> %s", config.WEB_HOST, config.WEB_PORT, config.WEBAPP_URL)
