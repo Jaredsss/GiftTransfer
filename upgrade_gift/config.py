@@ -34,6 +34,8 @@ SCAN_INTERVAL = _float("SCAN_INTERVAL", 2.0)
 FLOOR_CACHE_TTL = _int("FLOOR_CACHE_TTL", 120)
 
 XROCKET_API_KEY = os.getenv("XROCKET_API_KEY", "").strip()
+# Секрет вебхука из настроек приложения Rocket Pay (если пусто — используется API-токен)
+XROCKET_WEBHOOK_SECRET = os.getenv("XROCKET_WEBHOOK_SECRET", "").strip()
 XROCKET_CURRENCY = os.getenv("XROCKET_CURRENCY", "USDT").strip()
 XROCKET_BASE_URL = os.getenv("XROCKET_BASE_URL", "https://pay.xrocket.tg").rstrip("/")
 

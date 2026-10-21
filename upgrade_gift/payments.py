@@ -22,8 +22,10 @@ class XRocketError(Exception):
 
 
 class XRocket:
-    def __init__(self, api_key: str, base_url: str = config.XROCKET_BASE_URL):
+    def __init__(self, api_key: str, base_url: str = config.XROCKET_BASE_URL,
+                 webhook_secret: str = config.XROCKET_WEBHOOK_SECRET):
         self.api_key = api_key
+        self.webhook_secret = webhook_secret
         self.base_url = base_url
         self._session: aiohttp.ClientSession | None = None
 
@@ -69,10 +71,17 @@ class XRocket:
         return await self._request("GET", f"/tg-invoices/{int(invoice_id)}")
 
     def verify_webhook(self, body: bytes, signature: str) -> bool:
-        """HMAC-SHA256(body) с ключом SHA256(api_key), заголовок rocket-pay-signature."""
-        secret = hashlib.sha256(self.api_key.encode()).digest()
-        expected = hmac.new(secret, body, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, signature or "")
+        """Подпись rocket-pay-signature: HMAC-SHA256(body). Ключ — секрет вебхука
+        или SHA256 от него/от API-токена (в разных версиях xRocket по-разному).
+        Статус оплаты в любом случае перепроверяется запросом к API."""
+        keys = []
+        for raw in filter(None, (self.webhook_secret, self.api_key)):
+            keys += [raw.encode(), hashlib.sha256(raw.encode()).digest()]
+        signature = (signature or "").lower()
+        return any(
+            hmac.compare_digest(hmac.new(k, body, hashlib.sha256).hexdigest(), signature)
+            for k in keys
+        )
 
     async def close(self) -> None:
         if self._session:

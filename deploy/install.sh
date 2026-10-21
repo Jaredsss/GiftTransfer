@@ -27,7 +27,7 @@ set_env() {  # set_env KEY VALUE — заменяет или добавляет 
 }
 get_env() { grep "^$1=" .env | head -1 | cut -d= -f2-; }
 
-for key in BOT_TOKEN XROCKET_API_KEY TG_API_ID TG_API_HASH ADMIN_IDS WEBAPP_URL; do
+for key in BOT_TOKEN XROCKET_API_KEY XROCKET_WEBHOOK_SECRET TG_API_ID TG_API_HASH ADMIN_IDS WEBAPP_URL; do
   if [ -n "${!key:-}" ]; then set_env "$key" "${!key}"; fi
 done
 

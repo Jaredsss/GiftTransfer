@@ -102,6 +102,8 @@ def test_webhook_signature():
     body = b'{"type":"invoicePay"}'
     sig = hmac.new(hashlib.sha256(b"key").digest(), body, hashlib.sha256).hexdigest()
     assert x.verify_webhook(body, sig) and not x.verify_webhook(body, "00")
+    w = XRocket("key", webhook_secret="hook")
+    assert w.verify_webhook(body, hmac.new(b"hook", body, hashlib.sha256).hexdigest())
 
 
 class FakeClient:
