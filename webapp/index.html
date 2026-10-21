@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Upgrade Gift</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="logo">🎁</div>
+    <div>
+      <h1>Upgrade Gift</h1>
+      <p class="muted">Уведомления об улучшении подарков</p>
+    </div>
+  </header>
+
+  <div id="status" class="card status">Загрузка…</div>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="sub">Подписка</button>
+    <button class="tab" data-tab="notify">Уведомления</button>
+    <button class="tab" data-tab="gifts">Подарки</button>
+  </nav>
+
+  <!-- Подписка -->
+  <section id="tab-sub" class="panel">
+    <div id="plans" class="plans"></div>
+    <p class="muted small">Оплата криптовалютой через xRocket. Подписка продлевается: новые дни добавляются к текущим.</p>
+    <div id="pay-wait" class="card hidden">⏳ Ожидаем оплату… <span class="muted small">после оплаты вернитесь сюда</span></div>
+  </section>
+
+  <!-- Уведомления -->
+  <section id="tab-notify" class="panel hidden">
+    <div class="card">
+      <label class="row"><span>🔔 Получать уведомления</span><input type="checkbox" data-key="enabled" class="switch"></label>
+      <label class="row"><span>🔕 Без звука</span><input type="checkbox" data-key="silent" class="switch"></label>
+    </div>
+
+    <h3>Что показывать в сообщении</h3>
+    <div class="card">
+      <label class="row"><span>💰 Флор коллекции</span><input type="checkbox" data-key="show_floor" class="switch"></label>
+      <label class="row"><span>👤 Владелец</span><input type="checkbox" data-key="show_owner" class="switch"></label>
+      <label class="row"><span>🔄 Доступность передачи</span><input type="checkbox" data-key="show_transfer" class="switch"></label>
+      <label class="row"><span>🎨 Модель, фон, узор</span><input type="checkbox" data-key="show_attributes" class="switch"></label>
+    </div>
+
+    <h3>Фильтры</h3>
+    <div class="card">
+      <label class="row"><span>Только доступные к передаче</span><input type="checkbox" data-key="only_transferable" class="switch"></label>
+      <label class="row"><span>Только с открытым владельцем</span><input type="checkbox" data-key="only_visible_owner" class="switch"></label>
+      <label class="row"><span>Номер подарка до</span><input type="number" min="1" step="1" placeholder="любой" data-key="max_number"></label>
+      <label class="row"><span>Флор от, $</span><input type="number" min="0" step="any" placeholder="—" data-key="min_floor"></label>
+      <label class="row"><span>Флор до, $</span><input type="number" min="0" step="any" placeholder="—" data-key="max_floor"></label>
+      <label class="row"><span>Редкость модели до, %</span><input type="number" min="0" max="100" step="0.1" placeholder="любая" data-key="max_model_rarity"></label>
+    </div>
+    <p class="muted small" id="save-state"></p>
+  </section>
+
+  <!-- Подарки -->
+  <section id="tab-gifts" class="panel hidden">
+    <div class="card">
+      <label class="row"><span>Все коллекции</span><input type="checkbox" id="all-collections" class="switch"></label>
+    </div>
+    <div id="collections-box" class="hidden">
+      <div class="toolbar">
+        <input type="search" id="search" placeholder="Поиск коллекции…">
+        <button class="link" id="clear-sel">Сбросить</button>
+      </div>
+      <p class="muted small" id="sel-count"></p>
+      <div id="collections" class="card list"></div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+jsqvpn.online {
+	encode gzip
+	reverse_proxy bot:8080
+}

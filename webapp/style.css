@@ -1,0 +1,100 @@
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --bg2: var(--tg-theme-secondary-bg-color, #f2f3f5);
+  --text: var(--tg-theme-text-color, #111111);
+  --hint: var(--tg-theme-hint-color, #8a8f98);
+  --accent: var(--tg-theme-button-color, #2f7cf6);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  --card: var(--tg-theme-section-bg-color, var(--bg));
+  --sep: rgba(127, 127, 127, 0.18);
+  --ok: #2fb35a;
+  --bad: #e5484d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 16px 16px 40px;
+  background: var(--bg2);
+  color: var(--text);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+h1 { margin: 0; font-size: 20px; }
+h3 { margin: 20px 4px 8px; font-size: 13px; font-weight: 600; text-transform: uppercase; color: var(--hint); }
+.muted { color: var(--hint); margin: 2px 0 0; }
+.small { font-size: 13px; padding: 0 4px; }
+.hidden { display: none !important; }
+
+.hero { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.logo {
+  width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+  font-size: 26px; background: linear-gradient(135deg, #7b5cff, #2f7cf6);
+}
+
+.card { background: var(--card); border-radius: 14px; padding: 4px 14px; margin-bottom: 10px; }
+.status { padding: 14px; }
+.status b { display: block; font-size: 16px; margin-bottom: 2px; }
+.status.ok b { color: var(--ok); }
+.status.bad b { color: var(--bad); }
+
+.tabs { display: flex; background: var(--card); border-radius: 12px; padding: 3px; margin: 12px 0; }
+.tab {
+  flex: 1; border: 0; background: none; color: var(--hint); padding: 8px 0;
+  border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.tab.active { background: var(--accent); color: var(--accent-text); }
+
+.row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--sep); cursor: pointer;
+}
+.row:last-child { border-bottom: 0; }
+.row input[type=number] {
+  width: 96px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--sep);
+  background: var(--bg2); color: var(--text); font: inherit; text-align: right;
+}
+
+.switch {
+  appearance: none; -webkit-appearance: none; flex: none; width: 44px; height: 26px; border-radius: 13px;
+  background: var(--sep); position: relative; cursor: pointer; transition: background .2s; margin: 0;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(18px); }
+
+.plans { display: grid; gap: 10px; }
+.plan {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--card); border-radius: 14px; padding: 14px; border: 2px solid transparent;
+}
+.plan.best { border-color: var(--accent); }
+.plan .name { font-weight: 600; font-size: 16px; }
+.plan .per { color: var(--hint); font-size: 13px; }
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-text);
+  background: var(--accent); border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: 2px;
+}
+.btn {
+  border: 0; border-radius: 10px; padding: 10px 16px; background: var(--accent);
+  color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn:disabled { opacity: .6; }
+.link { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 6px; }
+
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.toolbar input {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 0;
+  background: var(--card); color: var(--text); font: inherit;
+}
+.list .row span small { display: block; color: var(--hint); font-size: 12px; }
+
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: 20px; padding: 12px 14px; border-radius: 12px;
+  background: rgba(20, 20, 20, .9); color: #fff; text-align: center; z-index: 10;
+}
