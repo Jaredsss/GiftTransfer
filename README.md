@@ -42,29 +42,24 @@ Telegram третьим лицам не показывает.
   флор от/до $, редкость модели до X %;
 - выбор коллекций (по умолчанию — все).
 
-## Запуск
+## Запуск на сервере
 
-1. Скопируйте `.env.example` в `.env` и заполните:
-   - `BOT_TOKEN` — токен бота;
-   - `XROCKET_API_KEY` — API-токен приложения xRocket Pay;
-   - `TG_API_ID`, `TG_API_HASH` — с https://my.telegram.org (для аккаунта-сканера);
-   - `ADMIN_IDS` — ваш Telegram ID (команды `/grant <id> <дней>` и `/stats`).
-2. Создайте сессию аккаунта-сканера (лучше отдельный аккаунт):
-   ```bash
-   pip install -r requirements.txt
-   python -m scripts.create_session
-   ```
-   Выведенную строку вставьте в `.env` как `TG_SESSION`.
-3. Направьте A-запись `jsqvpn.online` на сервер и запустите:
-   ```bash
-   docker compose up -d --build
-   ```
-   Caddy сам выпустит HTTPS-сертификат. Без Docker: `python -m upgrade_gift.main`
-   и любой reverse proxy с HTTPS на порт `8080`.
-4. Вебхук xRocket (необязательно, статусы счетов и так проверяются каждые 20 секунд):
-   в настройках приложения в @xRocket укажите `https://jsqvpn.online/xrocket/webhook`.
-5. В @BotFather → Bot Settings → Configure Mini App можно указать `https://jsqvpn.online`.
-   Кнопка меню бота настраивается автоматически при запуске.
+Нужны Ubuntu/Debian, root и A-запись `jsqvpn.online` → IP сервера (порты 80 и 443 свободны).
+
+```bash
+apt-get update && apt-get install -y git curl
+git clone -b claude/upgrade-gift-telegram-bot-hiyoyv https://github.com/Jaredsss/GiftTransfer /opt/gift
+cd /opt/gift
+BOT_TOKEN=... XROCKET_API_KEY=... TG_API_ID=... TG_API_HASH=... bash deploy/install.sh
+```
+
+Скрипт установит Docker, заполнит `.env`, попросит войти в аккаунт-сканер
+(номер, код, пароль 2FA) и запустит бота вместе с Caddy (HTTPS для мини-аппа).
+
+- Обновление: `cd /opt/gift && git pull && bash deploy/install.sh`
+- Логи: `cd /opt/gift && docker compose logs -f bot`
+- Вебхук xRocket (необязательно, счета и так проверяются каждые 20 с):
+  `https://jsqvpn.online/xrocket/webhook`
 
 ## Структура
 
