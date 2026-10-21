@@ -14,6 +14,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "min_floor": None,            # флор коллекции от, $
     "max_floor": None,            # флор коллекции до, $
     "max_model_rarity": None,     # редкость модели ≤ X %
+    "models": {},                 # {gift_id: [модели]} — пусто = любые
+    "patterns": {},               # {gift_id: [узоры]} — пусто = любые
+    "backdrops": [],              # фоны (общие для всех коллекций) — пусто = любые
     "show_floor": True,
     "show_owner": True,
     "show_transfer": True,
@@ -22,6 +25,26 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 _BOOL_KEYS = [k for k, v in DEFAULT_SETTINGS.items() if isinstance(v, bool)]
+
+
+def _names(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return sorted({str(v)[:64] for v in value[:300] if isinstance(v, str) and v.strip()})
+
+
+def _names_by_collection(value) -> dict[str, list[str]]:
+    result = {}
+    if isinstance(value, dict):
+        for key, names in list(value.items())[:500]:
+            try:
+                gift_id = str(int(key))
+            except (TypeError, ValueError):
+                continue
+            names = _names(names)
+            if names:
+                result[gift_id] = names
+    return result
 _NUM_KEYS = ["max_number", "min_floor", "max_floor", "max_model_rarity"]
 
 
@@ -48,6 +71,11 @@ def sanitize_settings(raw: Any, base: dict | None = None) -> dict:
             if num < 0 or num != num or num > 1e12:
                 continue
             result[key] = int(num) if key == "max_number" else num
+    for key in ("models", "patterns"):
+        if key in raw:
+            result[key] = _names_by_collection(raw[key])
+    if "backdrops" in raw:
+        result["backdrops"] = _names(raw["backdrops"])
     if "collections" in raw and isinstance(raw["collections"], list):
         ids = []
         for item in raw["collections"][:1000]:

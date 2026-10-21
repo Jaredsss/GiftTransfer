@@ -16,7 +16,9 @@ log = logging.getLogger(__name__)
 
 
 class XRocketError(Exception):
-    pass
+    def __init__(self, text: str, message: str = ""):
+        super().__init__(text)
+        self.message = message  # ответ xRocket, понятный человеку
 
 
 class XRocket:
@@ -37,7 +39,15 @@ class XRocket:
             except (json.JSONDecodeError, aiohttp.ContentTypeError):
                 data = None
         if not isinstance(data, dict) or not data.get("success"):
-            raise XRocketError(f"{method} {path}: HTTP {resp.status} {data}")
+            message = ""
+            if isinstance(data, dict):
+                errors = "; ".join(
+                    f"{e.get('property')}: {e.get('error')}" for e in data.get("errors") or []
+                    if isinstance(e, dict)
+                )
+                message = "; ".join(x for x in (str(data.get("message") or ""), errors) if x)
+            raise XRocketError(f"{method} {path}: HTTP {resp.status} {data}",
+                               message or f"HTTP {resp.status}")
         return data["data"]
 
     async def create_invoice(self, amount: float, currency: str, description: str,
@@ -51,6 +61,9 @@ class XRocket:
             "payload": payload,
             "expiredIn": expired_in,
         })
+
+    async def app_info(self) -> dict:
+        return await self._request("GET", "/app/info")
 
     async def get_invoice(self, invoice_id: int) -> dict:
         return await self._request("GET", f"/tg-invoices/{int(invoice_id)}")

@@ -2,7 +2,7 @@ const tg = window.Telegram?.WebApp;
 tg?.ready();
 tg?.expand();
 
-const state = { user: null, plans: [], collections: [], settings: null };
+const state = { user: null, plans: [], collections: [], settings: null, attrs: {}, pickMode: false };
 const $ = (sel) => document.querySelector(sel);
 
 async function api(path, options = {}) {
@@ -24,7 +24,11 @@ function toast(text) {
   el.textContent = text;
   el.classList.remove("hidden");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => el.classList.add("hidden"), 2500);
+  toast.timer = setTimeout(() => el.classList.add("hidden"), 3500);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 }
 
 function formatDate(ts) {
@@ -33,7 +37,7 @@ function formatDate(ts) {
   });
 }
 
-// --- статус подписки ---
+// --- статус подписки и блокировка настроек ---
 
 function renderStatus() {
   const el = $("#status");
@@ -46,7 +50,12 @@ function renderStatus() {
     el.className = "card status bad";
     el.innerHTML = `<b>❌ Нет подписки</b><span class="muted">Без подписки бот не присылает уведомления</span>`;
   }
+  const locked = !u.active;
+  document.querySelectorAll(".lock").forEach((x) => x.classList.toggle("hidden", !locked));
+  document.querySelectorAll(".locked-content").forEach((x) => x.classList.toggle("hidden", locked));
 }
+
+document.querySelectorAll(".go-sub").forEach((b) => b.addEventListener("click", () => openTab("sub")));
 
 // --- тарифы ---
 
@@ -93,11 +102,10 @@ function waitForPayment(id) {
     try {
       const res = await api(`/api/invoices/${id}`);
       if (res.status === "paid") {
-        state.user = res.user;
-        renderStatus();
+        stop();
         tg?.HapticFeedback?.notificationOccurred("success");
         toast("✅ Оплата получена, подписка активна!");
-        stop();
+        await load();
       } else if (res.status !== "active") {
         toast("Счёт истёк, создайте новый");
         stop();
@@ -110,7 +118,7 @@ function waitForPayment(id) {
   }
 }
 
-// --- настройки ---
+// --- настройки уведомлений ---
 
 function renderSettings() {
   document.querySelectorAll("[data-key]").forEach((input) => {
@@ -150,12 +158,28 @@ document.querySelectorAll("[data-key]").forEach((input) => {
 
 // --- коллекции ---
 
+function countText(n, empty) {
+  return n ? `выбрано ${n}` : empty;
+}
+
+function collectionInfo(c) {
+  const s = state.settings;
+  const m = (s.models[c.id] || []).length;
+  const p = (s.patterns[c.id] || []).length;
+  const parts = [c.active ? `улучшено ${c.issued.toLocaleString("ru-RU")}` : "улучшений пока нет"];
+  if (m) parts.push(`моделей: ${m}`);
+  if (p) parts.push(`узоров: ${p}`);
+  return parts.join(" · ");
+}
+
 function renderCollections() {
-  const selected = new Set(state.settings.collections);
+  const s = state.settings;
+  const selected = new Set(s.collections);
   const all = selected.size === 0 && !state.pickMode;
   $("#all-collections").checked = all;
-  $("#collections-box").classList.toggle("hidden", all);
-  $("#sel-count").textContent = all ? "" : selected.size ? `Выбрано: ${selected.size}` : "Выберите коллекции (пока ничего не выбрано — приходят все)";
+  $("#sel-count").textContent = all ? "уведомления по всем коллекциям"
+    : selected.size ? `выбрано: ${selected.size}` : "отметьте нужные коллекции";
+  $("#backdrops-info").textContent = countText(s.backdrops.length, "любые");
 
   const query = $("#search").value.trim().toLowerCase();
   const box = $("#collections");
@@ -166,28 +190,31 @@ function renderCollections() {
     return;
   }
   items.forEach((c) => {
-    const row = document.createElement("label");
+    const row = document.createElement("div");
     row.className = "row";
-    const info = c.active ? `улучшено ${c.issued.toLocaleString("ru-RU")}` : "улучшений пока нет";
-    row.innerHTML = `<span>${escapeHtml(c.title)}<small>${info}</small></span>
-      <input type="checkbox" class="switch" ${selected.has(c.id) ? "checked" : ""}>`;
-    row.querySelector("input").addEventListener("change", (e) => {
-      const set = new Set(state.settings.collections);
-      e.target.checked ? set.add(c.id) : set.delete(c.id);
-      state.settings.collections = [...set];
-      scheduleSave();
-      renderCollections();
-    });
+    row.innerHTML = `<span>${escapeHtml(c.title)}<small>${collectionInfo(c)}</small></span>
+      ${all ? "" : `<input type="checkbox" class="switch" ${selected.has(c.id) ? "checked" : ""}>`}
+      <span class="chev">›</span>`;
+    const toggle = row.querySelector("input");
+    if (toggle) {
+      toggle.addEventListener("click", (e) => e.stopPropagation());
+      toggle.addEventListener("change", () => setTracked(c.id, toggle.checked));
+    }
+    row.addEventListener("click", () => openSheet(c));
     box.appendChild(row);
   });
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+function setTracked(id, on) {
+  const set = new Set(state.settings.collections);
+  on ? set.add(id) : set.delete(id);
+  state.settings.collections = [...set];
+  scheduleSave();
+  renderCollections();
 }
 
 $("#all-collections").addEventListener("change", (e) => {
-  // Пустой список = все коллекции; pickMode лишь показывает выбор
+  // Пустой список = все коллекции; pickMode лишь показывает переключатели
   state.pickMode = !e.target.checked;
   if (e.target.checked && state.settings.collections.length) {
     state.settings.collections = [];
@@ -196,24 +223,135 @@ $("#all-collections").addEventListener("change", (e) => {
   renderCollections();
 });
 $("#search").addEventListener("input", renderCollections);
-$("#clear-sel").addEventListener("click", () => {
-  state.pickMode = false;
-  state.settings.collections = [];
+
+// --- выбор моделей / узоров / фонов ---
+
+const sheet = { collection: null, kind: "models" };
+
+async function getAttrs(id) {
+  if (!state.attrs[id]) state.attrs[id] = await api(`/api/collections/${id}/attributes`);
+  return state.attrs[id];
+}
+
+function selectedList() {
+  const s = state.settings;
+  if (sheet.kind === "backdrops") return s.backdrops;
+  return s[sheet.kind][sheet.collection.id] || [];
+}
+
+function setSelectedList(list) {
+  const s = state.settings;
+  if (sheet.kind === "backdrops") s.backdrops = list;
+  else if (list.length) s[sheet.kind][sheet.collection.id] = list;
+  else delete s[sheet.kind][sheet.collection.id];
   scheduleSave();
+}
+
+async function openSheet(collection, kind = "models") {
+  sheet.collection = collection;
+  sheet.kind = kind;
+  const isBackdrops = kind === "backdrops";
+  $("#sheet-title").textContent = isBackdrops ? "Фоны" : collection.title;
+  $("#sheet-tabs").classList.toggle("hidden", isBackdrops);
+  const tracking = !isBackdrops && state.settings.collections.length > 0;
+  $("#sheet-track").classList.toggle("hidden", !tracking);
+  if (tracking) $("#sheet-track-input").checked = state.settings.collections.includes(collection.id);
+  $("#sheet-search").value = "";
+  setSheetTab(kind);
+  $("#sheet").classList.remove("hidden");
+  document.body.classList.add("no-scroll");
+  tg?.BackButton?.show();
+  await renderChips();
+}
+
+function closeSheet() {
+  $("#sheet").classList.add("hidden");
+  document.body.classList.remove("no-scroll");
+  tg?.BackButton?.hide();
   renderCollections();
+}
+
+function setSheetTab(kind) {
+  document.querySelectorAll("#sheet-tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.kind === kind));
+}
+
+async function renderChips() {
+  const box = $("#chips");
+  const info = $("#sheet-info");
+  box.innerHTML = `<p class="muted">Загрузка…</p>`;
+  let items;
+  try {
+    items = (await getAttrs(sheet.collection.id))[sheet.kind];
+  } catch (e) {
+    box.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  const chosen = new Set(selectedList());
+  const query = $("#sheet-search").value.trim().toLowerCase();
+  info.textContent = chosen.size
+    ? `Уведомления только при выбранных (${chosen.size})`
+    : "Ничего не выбрано — подходят любые";
+  box.innerHTML = "";
+  items.filter((a) => a.name.toLowerCase().includes(query)).forEach((a) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (chosen.has(a.name) ? " on" : "");
+    chip.innerHTML = `${escapeHtml(a.name)}${a.label ? `<small>${escapeHtml(a.label)}</small>` : ""}`;
+    chip.onclick = () => {
+      const set = new Set(selectedList());
+      set.has(a.name) ? set.delete(a.name) : set.add(a.name);
+      setSelectedList([...set].sort());
+      tg?.HapticFeedback?.selectionChanged();
+      renderChips();
+    };
+    box.appendChild(chip);
+  });
+  if (!box.children.length) box.innerHTML = `<p class="muted">Ничего не найдено</p>`;
+}
+
+document.querySelectorAll("#sheet-tabs .tab").forEach((t) => t.addEventListener("click", () => {
+  sheet.kind = t.dataset.kind;
+  setSheetTab(sheet.kind);
+  renderChips();
+}));
+$("#sheet-search").addEventListener("input", renderChips);
+$("#sheet-reset").addEventListener("click", () => { setSelectedList([]); renderChips(); });
+$("#sheet-close").addEventListener("click", closeSheet);
+$("#sheet-track-input").addEventListener("change", (e) => setTracked(sheet.collection.id, e.target.checked));
+tg?.BackButton?.onClick(closeSheet);
+
+$("#backdrops-row").addEventListener("click", () => {
+  // Фоны общие для всех коллекций — берём список у любой коллекции с улучшениями
+  const source = state.collections.find((c) => c.active) || state.collections[0];
+  if (!source) return toast("Список фонов появится после запуска мониторинга");
+  openSheet(source, "backdrops");
 });
 
 // --- вкладки ---
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    document.querySelectorAll(".panel").forEach((p) => p.classList.add("hidden"));
-    $(`#tab-${tab.dataset.tab}`).classList.remove("hidden");
-  });
+function openTab(name) {
+  document.querySelectorAll(".tabs.main .tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("hidden", p.id !== `tab-${name}`));
+}
+
+document.querySelectorAll(".tabs.main .tab").forEach((tab) => {
+  tab.addEventListener("click", () => openTab(tab.dataset.tab));
 });
 
-// --- старт ---
+// --- загрузка ---
+
+async function load() {
+  const me = await api("/api/me");
+  state.user = me.user;
+  state.plans = me.plans;
+  state.settings = me.user.settings;
+  renderStatus();
+  renderPlans();
+  if (state.user.active) {
+    state.collections = (await api("/api/collections")).collections;
+    renderSettings();
+    renderCollections();
+  }
+}
 
 (async function init() {
   if (!tg?.initData) {
@@ -221,15 +359,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
     return;
   }
   try {
-    const [me, cols] = await Promise.all([api("/api/me"), api("/api/collections")]);
-    state.user = me.user;
-    state.plans = me.plans;
-    state.settings = me.user.settings;
-    state.collections = cols.collections;
-    renderStatus();
-    renderPlans();
-    renderSettings();
-    renderCollections();
+    await load();
   } catch (e) {
     $("#status").textContent = "Не удалось загрузить данные: " + e.message;
   }

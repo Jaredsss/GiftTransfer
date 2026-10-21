@@ -22,7 +22,7 @@ from telethon.tl.functions.payments import (
 
 from . import config
 from .db import Database
-from .gifts import GiftEvent, parse_unique_gift, slug_base
+from .gifts import GiftEvent, attribute_info, parse_unique_gift, slug_base
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ INACTIVE_RECHECK = 15 * 60      # повторная проверка колле
 RESYNC_INTERVAL = 5 * 60        # сверка с availability_issued
 BURST = 25                      # максимум новых подарков коллекции за один проход
 MAX_CATCHUP = 30                # сколько пропущенных номеров догонять при сверке
+ATTRS_TTL = 6 * 3600            # кэш списка моделей/фонов/узоров
 
 
 class Monitor:
@@ -42,6 +43,7 @@ class Monitor:
         self._sem = asyncio.Semaphore(max(1, config.SCAN_CONCURRENCY))
         self._floor_cache: dict[int, tuple[float, float | None, int | None]] = {}
         self._resync_at: dict[int, float] = {}
+        self._attrs: dict[int, tuple[float, dict]] = {}
 
     # --- запросы к Telegram ---
 
@@ -93,6 +95,29 @@ class Monitor:
 
         self._floor_cache[gift_id] = (time.time(), floor_usd, floor_stars)
         return floor_usd, floor_stars
+
+    async def attributes(self, gift_id: int) -> dict:
+        """Все модели, фоны и узоры коллекции (с редкостью)."""
+        cached = self._attrs.get(gift_id)
+        if cached and time.time() - cached[0] < ATTRS_TTL:
+            return cached[1]
+        res = await self._call(GetResaleStarGiftsRequest(
+            gift_id=gift_id, offset="", limit=1, attributes_hash=0,
+        ))
+        data = {"models": [], "backdrops": [], "patterns": []}
+        kinds = {
+            types.StarGiftAttributeModel: "models",
+            types.StarGiftAttributeBackdrop: "backdrops",
+            types.StarGiftAttributePattern: "patterns",
+        }
+        for attr in res.attributes or []:
+            kind = kinds.get(type(attr))
+            if kind:
+                data[kind].append(attribute_info(attr))
+        for items in data.values():
+            items.sort(key=lambda a: (a["rarity"] is None, a["rarity"] or 0, a["name"]))
+        self._attrs[gift_id] = (time.time(), data)
+        return data
 
     # --- коллекции ---
 

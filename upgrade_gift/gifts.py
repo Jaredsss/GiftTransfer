@@ -70,6 +70,11 @@ def _attribute(attr) -> Attribute:
     return Attribute(attr.name, None, label)
 
 
+def attribute_info(attr) -> dict:
+    a = _attribute(attr)
+    return {"name": a.name, "rarity": a.rarity, "label": a.rarity_label}
+
+
 def format_amount(amount) -> str:
     """StarsAmount / StarsTonAmount -> текст."""
     if isinstance(amount, types.StarsTonAmount):

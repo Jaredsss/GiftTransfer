@@ -29,6 +29,12 @@ def matches(event: GiftEvent, s: dict) -> bool:
         return False
     if s["max_floor"] is not None and (event.floor_usd is None or event.floor_usd > s["max_floor"]):
         return False
+    for key, attr in (("models", event.model), ("patterns", event.pattern)):
+        allowed = s[key].get(str(event.gift_id))
+        if allowed and (attr is None or attr.name not in allowed):
+            return False
+    if s["backdrops"] and (event.backdrop is None or event.backdrop.name not in s["backdrops"]):
+        return False
     if s["max_model_rarity"] is not None:
         rarity = event.model.rarity if event.model else None
         if rarity is None or rarity > s["max_model_rarity"]:

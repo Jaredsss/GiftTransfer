@@ -18,7 +18,7 @@
 
   <div id="status" class="card status">Загрузка…</div>
 
-  <nav class="tabs">
+  <nav class="tabs main">
     <button class="tab active" data-tab="sub">Подписка</button>
     <button class="tab" data-tab="notify">Уведомления</button>
     <button class="tab" data-tab="gifts">Подарки</button>
@@ -33,6 +33,13 @@
 
   <!-- Уведомления -->
   <section id="tab-notify" class="panel hidden">
+    <div class="card lock hidden">
+      <div class="lock-icon">🔒</div>
+      <b>Настройки доступны с подпиской</b>
+      <p class="muted">Оформите подписку, чтобы получать уведомления и настраивать их.</p>
+      <button class="btn go-sub">Выбрать тариф</button>
+    </div>
+    <div class="locked-content hidden">
     <div class="card">
       <label class="row"><span>🔔 Получать уведомления</span><input type="checkbox" data-key="enabled" class="switch"></label>
       <label class="row"><span>🔕 Без звука</span><input type="checkbox" data-key="silent" class="switch"></label>
@@ -56,22 +63,48 @@
       <label class="row"><span>Редкость модели до, %</span><input type="number" min="0" max="100" step="0.1" placeholder="любая" data-key="max_model_rarity"></label>
     </div>
     <p class="muted small" id="save-state"></p>
+    </div>
   </section>
 
   <!-- Подарки -->
   <section id="tab-gifts" class="panel hidden">
-    <div class="card">
-      <label class="row"><span>Все коллекции</span><input type="checkbox" id="all-collections" class="switch"></label>
+    <div class="card lock hidden">
+      <div class="lock-icon">🔒</div>
+      <b>Фильтры доступны с подпиской</b>
+      <p class="muted">Оформите подписку, чтобы выбирать коллекции, модели, фоны и узоры.</p>
+      <button class="btn go-sub">Выбрать тариф</button>
     </div>
-    <div id="collections-box" class="hidden">
+    <div class="locked-content hidden">
+      <div class="card">
+        <label class="row"><span>Все коллекции<small class="muted" id="sel-count"></small></span><input type="checkbox" id="all-collections" class="switch"></label>
+        <div class="row" id="backdrops-row"><span>🎨 Фоны<small id="backdrops-info">любые</small></span><span class="chev">›</span></div>
+      </div>
+      <p class="muted small">Нажмите на коллекцию, чтобы выбрать модели и узоры.</p>
       <div class="toolbar">
         <input type="search" id="search" placeholder="Поиск коллекции…">
-        <button class="link" id="clear-sel">Сбросить</button>
       </div>
-      <p class="muted small" id="sel-count"></p>
       <div id="collections" class="card list"></div>
     </div>
   </section>
+
+  <!-- Выбор моделей / узоров / фонов -->
+  <div id="sheet" class="sheet hidden">
+    <div class="sheet-head">
+      <b id="sheet-title"></b>
+      <button class="link" id="sheet-close">Готово</button>
+    </div>
+    <label class="card row hidden" id="sheet-track"><span>Отслеживать коллекцию</span><input type="checkbox" class="switch" id="sheet-track-input"></label>
+    <nav class="tabs" id="sheet-tabs">
+      <button class="tab active" data-kind="models">Модели</button>
+      <button class="tab" data-kind="patterns">Узоры</button>
+    </nav>
+    <div class="toolbar">
+      <input type="search" id="sheet-search" placeholder="Поиск…">
+      <button class="link" id="sheet-reset">Сбросить</button>
+    </div>
+    <p class="muted small" id="sheet-info"></p>
+    <div id="chips" class="chips"></div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
   <script src="/static/app.js"></script>

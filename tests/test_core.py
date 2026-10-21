@@ -88,6 +88,13 @@ def test_filters():
     assert not matches(event, {**s, "min_floor": 100})
     assert matches(event, {**s, "max_model_rarity": 1})
     assert not matches(event, {**s, "max_model_rarity": 0.1})
+    assert matches(event, {**s, "models": {"42": ["Gold"]}, "backdrops": ["Onyx"]})
+    assert not matches(event, {**s, "models": {"42": ["Silver"]}})
+    assert matches(event, {**s, "models": {"7": ["Silver"]}})  # фильтр другой коллекции
+    assert not matches(event, {**s, "patterns": {"42": ["Hearts"]}})
+    assert not matches(event, {**s, "backdrops": ["Black"]})
+    clean = sanitize_settings({"models": {"42": ["Gold", 5], "x": ["A"]}, "backdrops": "bad"})
+    assert clean["models"] == {"42": ["Gold"]} and clean["backdrops"] == []
 
 
 def test_webhook_signature():
@@ -136,6 +143,21 @@ async def test_monitor_detects_new_upgrades(db):
     assert (await db.collections())[0]["last_num"] == 5
 
 
+async def test_monitor_attributes(db):
+    doc = types.DocumentEmpty(id=1)
+
+    class Client:
+        async def __call__(self, request):
+            return payments.ResaleStarGifts(count=0, gifts=[], chats=[], users=[], attributes=[
+                types.StarGiftAttributeModel(name="B", document=doc, rarity=types.StarGiftAttributeRarity(permille=20)),
+                types.StarGiftAttributeModel(name="A", document=doc, rarity=types.StarGiftAttributeRarity(permille=5)),
+                types.StarGiftAttributePattern(name="P", document=doc, rarity=types.StarGiftAttributeRarityRare()),
+            ])
+
+    data = await Monitor(Client(), db, None).attributes(42)
+    assert [m["name"] for m in data["models"]] == ["A", "B"] and data["patterns"][0]["label"] == "редкая"
+
+
 async def _none():
     return None, None
 
@@ -151,20 +173,31 @@ async def test_api(db, aiohttp_client):
             await db.extend_subscription(7, 30)
             return "paid"
 
-    client = await aiohttp_client(create_app(db, FakeBilling()))
+    async def attrs(gift_id):
+        return {"models": [{"name": "Gold", "rarity": 0.5, "label": "0.5%"}], "backdrops": [], "patterns": []}
+
+    client = await aiohttp_client(create_app(db, FakeBilling(), attrs))
     headers = {"X-Telegram-Init-Data": make_init_data({"id": 7, "first_name": "Ivan"})}
 
     assert (await client.get("/api/me")).status == 401
     me = await (await client.get("/api/me", headers=headers)).json()
-    assert me["user"]["active"] is False and len(me["plans"]) == 3
+    assert me["user"]["active"] is False and me["user"]["settings"] is None and len(me["plans"]) == 3
 
-    r = await client.put("/api/settings", headers=headers, json={"only_transferable": True, "collections": [42]})
-    assert (await r.json())["settings"]["collections"] == [42]
+    # Без подписки настройки недоступны
+    assert (await client.put("/api/settings", headers=headers, json={})).status == 403
+    assert (await client.get("/api/collections", headers=headers)).status == 403
+    assert (await client.get("/api/collections/42/attributes", headers=headers)).status == 403
 
     r = await client.post("/api/invoices", headers=headers, json={"plan": "month"})
     assert (await r.json())["id"] == 99
     r = await (await client.get("/api/invoices/99", headers=headers)).json()
-    assert r["status"] == "paid" and r["user"]["active"] is True
+    assert r["status"] == "paid" and r["user"]["active"] is True and r["user"]["settings"]
+
+    r = await client.put("/api/settings", headers=headers,
+                         json={"collections": [42], "models": {"42": ["Gold"]}})
+    assert (await r.json())["settings"]["models"] == {"42": ["Gold"]}
+    r = await client.get("/api/collections/42/attributes", headers=headers)
+    assert (await r.json())["models"][0]["name"] == "Gold"
 
     assert (await client.get("/")).status == 200
     assert (await client.get("/static/app.js")).status == 200

@@ -36,27 +36,34 @@ async def main() -> None:
     billing = Billing(xrocket, db, bot) if xrocket else None
     if not billing:
         log.warning("XROCKET_API_KEY не задан — оплата отключена")
-
-    runner = web.AppRunner(create_app(db, billing))
-    await runner.setup()
-    await web.TCPSite(runner, config.WEB_HOST, config.WEB_PORT).start()
-    log.info("Мини-апп: http://%s:%s -> %s", config.WEB_HOST, config.WEB_PORT, config.WEBAPP_URL)
+    else:
+        try:
+            info = await xrocket.app_info()
+            log.info("xRocket: приложение %s", info.get("name"))
+        except Exception as e:
+            log.error("xRocket: ключ не работает (%s) — счета создаваться не будут", e)
 
     notifier = Notifier(bot, db)
     tasks = [asyncio.create_task(notifier.run())]
     if billing:
         tasks.append(asyncio.create_task(billing.poll()))
 
-    client = None
+    client = monitor = None
     if config.TG_SESSION and config.TG_API_ID and config.TG_API_HASH:
         client = TelegramClient(StringSession(config.TG_SESSION), config.TG_API_ID, config.TG_API_HASH)
         await client.connect()
         if not await client.is_user_authorized():
             raise SystemExit("TG_SESSION недействительна — создайте новую: python -m scripts.create_session")
-        tasks.append(asyncio.create_task(Monitor(client, db, notifier.dispatch).run()))
+        monitor = Monitor(client, db, notifier.dispatch)
+        tasks.append(asyncio.create_task(monitor.run()))
         log.info("Мониторинг улучшений запущен")
     else:
         log.warning("TG_API_ID / TG_API_HASH / TG_SESSION не заданы — мониторинг подарков отключён")
+
+    runner = web.AppRunner(create_app(db, billing, monitor.attributes if monitor else None))
+    await runner.setup()
+    await web.TCPSite(runner, config.WEB_HOST, config.WEB_PORT).start()
+    log.info("Мини-апп: http://%s:%s -> %s", config.WEB_HOST, config.WEB_PORT, config.WEBAPP_URL)
 
     try:
         await dp.start_polling(bot)

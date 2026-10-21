@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import Awaitable, Callable
 from urllib.parse import parse_qsl
 
 from aiohttp import web
@@ -41,18 +42,30 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = config.INI
     return user if isinstance(user, dict) and "id" in user else None
 
 
+def _is_active(user: dict) -> bool:
+    return user["sub_until"] > time.time()
+
+
 def _public_user(user: dict) -> dict:
+    active = _is_active(user)
     return {
         "id": user["id"],
         "username": user["username"],
         "first_name": user["first_name"],
         "sub_until": user["sub_until"],
-        "active": user["sub_until"] > time.time(),
-        "settings": user["settings"],
+        "active": active,
+        # Настройки видны только с активной подпиской
+        "settings": user["settings"] if active else None,
     }
 
 
-def create_app(db: Database, billing: Billing | None) -> web.Application:
+def _forbidden() -> web.HTTPForbidden:
+    return web.HTTPForbidden(text=json.dumps({"error": "Нужна подписка"}),
+                             content_type="application/json")
+
+
+def create_app(db: Database, billing: Billing | None,
+               attributes: Callable[[int], Awaitable[dict]] | None = None) -> web.Application:
     routes = web.RouteTableDef()
 
     async def current_user(request: web.Request) -> dict:
@@ -64,6 +77,12 @@ def create_app(db: Database, billing: Billing | None) -> web.Application:
         if not user:
             await db.upsert_user(tg_user["id"], tg_user.get("username"), tg_user.get("first_name"))
             user = await db.get_user(tg_user["id"])
+        return user
+
+    async def subscribed_user(request: web.Request) -> dict:
+        user = await current_user(request)
+        if not _is_active(user):
+            raise _forbidden()
         return user
 
     @routes.get("/")
@@ -78,7 +97,7 @@ def create_app(db: Database, billing: Billing | None) -> web.Application:
 
     @routes.put("/api/settings")
     async def save_settings(request):
-        user = await current_user(request)
+        user = await subscribed_user(request)
         try:
             raw = await request.json()
         except ValueError:
@@ -89,13 +108,25 @@ def create_app(db: Database, billing: Billing | None) -> web.Application:
 
     @routes.get("/api/collections")
     async def collections(request):
-        await current_user(request)
+        await subscribed_user(request)
         items = [
             {"id": c["gift_id"], "title": c["title"], "issued": c["issued"],
              "total": c["total"], "active": bool(c["active"])}
             for c in await db.collections()
         ]
         return web.json_response({"collections": items})
+
+    @routes.get("/api/collections/{id:\\d+}/attributes")
+    async def collection_attributes(request):
+        await subscribed_user(request)
+        if not attributes:
+            return web.json_response({"error": "Мониторинг не запущен"}, status=503)
+        try:
+            data = await attributes(int(request.match_info["id"]))
+        except Exception as e:
+            log.warning("Атрибуты коллекции %s: %s", request.match_info["id"], e)
+            return web.json_response({"error": "Не удалось загрузить список"}, status=502)
+        return web.json_response(data)
 
     @routes.post("/api/invoices")
     async def create_invoice(request):
@@ -112,7 +143,7 @@ def create_app(db: Database, billing: Billing | None) -> web.Application:
             invoice = await billing.create(user["id"], plan)
         except XRocketError as e:
             log.error("Создание счёта: %s", e)
-            return web.json_response({"error": "Не удалось создать счёт"}, status=502)
+            return web.json_response({"error": f"Не удалось создать счёт: {e.message}"}, status=502)
         return web.json_response(invoice)
 
     @routes.get("/api/invoices/{id:\\d+}")
