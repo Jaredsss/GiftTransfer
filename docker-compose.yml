@@ -4,13 +4,16 @@ services:
     env_file: .env
     environment:
       DB_PATH: /app/data/upgrade_gift.db
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
 
-  # HTTPS для мини-аппа: Caddy сам получит сертификат Let's Encrypt для jsqvpn.online
+  # HTTPS для мини-аппа, если порты 80/443 свободны (иначе install.sh настраивает nginx)
   caddy:
     image: caddy:2
+    profiles: ["caddy"]
     ports:
       - "80:80"
       - "443:443"

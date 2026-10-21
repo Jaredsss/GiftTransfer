@@ -44,7 +44,8 @@ Telegram третьим лицам не показывает.
 
 ## Запуск на сервере
 
-Нужны Ubuntu/Debian, root и A-запись `jsqvpn.online` → IP сервера (порты 80 и 443 свободны).
+Нужны Ubuntu/Debian, root и A-запись `jsqvpn.online` → IP сервера. Если порты 80/443 свободны,
+HTTPS делает встроенный Caddy; если их занимает nginx — скрипт подключит мини-апп к nginx и выпустит сертификат через certbot.
 
 ```bash
 apt-get update && apt-get install -y git curl
