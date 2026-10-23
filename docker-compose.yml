@@ -1,28 +1,9 @@
 services:
-  bot:
+  rocket:
     build: .
     env_file: .env
     environment:
-      DB_PATH: /app/data/upgrade_gift.db
-    ports:
-      - "127.0.0.1:8080:8080"
+      DB_PATH: /app/data/rocket.db
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-
-  # HTTPS для мини-аппа, если порты 80/443 свободны (иначе install.sh настраивает nginx)
-  caddy:
-    image: caddy:2
-    profiles: ["caddy"]
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-    depends_on:
-      - bot
-    restart: unless-stopped
-
-volumes:
-  caddy_data:
